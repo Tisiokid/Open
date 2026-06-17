@@ -822,7 +822,7 @@ def preremplir_formulaire_pdf(donnees, config, log):
                 "adresse pétitionnaire"  : safe_str(donnees.get("adresse_petitionnaire")),
                 "nature travaux"         : safe_str(donnees.get("nature_travaux")),
                 "adresse travaux"        : safe_str(donnees.get("adresse_travaux")),
-                "CommuneSEMM"           : "MARSEILLE"
+                "CommunneSEMM"           : "MARSEILLE"
             }
         )
         log.succes(f"✅ Formulaire sauvegardé : {nom_fichier}")
