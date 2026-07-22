@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-from fillpdf import fillpdfs
+from pypdf import PdfReader, PdfWriter
 
 # ============================================================
 # CONSTANTES (Sélection par Texte Exact pour éviter les erreurs)
@@ -803,33 +803,50 @@ def extraire_zip_et_creer_dossier(chemin_zip, donnees, config, log):
 # ============================================================
 
 def preremplir_formulaire_pdf(donnees, config, log):
-    log.info("📝 Pré-remplissage du formulaire PDF...")
-
+    log.info("📝 Pré-remplissage du formulaire PDF avec PyPDF...")
     chemin_modele = str(Path(config["formulaire_pdf"]))
-    nom_fichier   = f"Formulaire_{donnees['numero_formate']}.pdf"
+    
+    # Sécurité pour le nom de fichier
+    nom_propre = re.sub(r'[<>:"/\\|?*]', "_", donnees['numero_formate'])
+    nom_fichier   = f"Formulaire_{nom_propre}.pdf"
     chemin_rempli = str(Path(config["formulaire_dossier_sortie"]) / nom_fichier)
 
-    def safe_str(v):
-        return "" if v is None else str(v).strip()
+    safe_str = lambda v: "" if v is None else str(v).strip()
+
+    donnees_pdf = {
+        "numéro dossier"         : safe_str(donnees.get("numero_formate")),
+        "nom pétitionnaire"      : safe_str(donnees.get("nom_petitionnaire")),
+        "adresse pétitionnaire"  : safe_str(donnees.get("adresse_petitionnaire")),
+        "nature travaux"         : safe_str(donnees.get("nature_travaux")),
+        "adresse travaux"        : safe_str(donnees.get("adresse_travaux")),
+        "CommuneSEMM"            : "MARSEILLE"  # Ça passera sans problème ici !
+    }
 
     try:
-        fillpdfs.write_fillable_pdf(
-            chemin_modele,
-            chemin_rempli,
-            {
-                "numéro dossier"         : safe_str(donnees.get("numero_formate")),
-                "nom pétitionnaire"      : safe_str(donnees.get("nom_petitionnaire")),
-                "adresse pétitionnaire"  : safe_str(donnees.get("adresse_petitionnaire")),
-                "nature travaux"         : safe_str(donnees.get("nature_travaux")),
-                "adresse travaux"        : safe_str(donnees.get("adresse_travaux")),
-                "CommuneSEMM"           : "MARSEILLE"
-            }
-        )
+        # On lit la matrice originale
+        reader = PdfReader(chemin_modele)
+        writer = PdfWriter()
+        
+        # CORRECTION ICI : On clone TOUT le document d'un coup (visuel + formulaires)
+        writer.append(reader)
+            
+        # On remplit les champs (on le fait sur la première page par sécurité)
+        if len(writer.pages) > 0:
+            writer.update_page_form_field_values(writer.pages[0], donnees_pdf)
+        
+        # On sauvegarde le nouveau PDF généré
+        with open(chemin_rempli, "wb") as output_stream:
+            writer.write(output_stream)
+            
         log.succes(f"✅ Formulaire sauvegardé : {nom_fichier}")
         return chemin_rempli
+        
     except Exception as e:
-        log.erreur(f"❌ Erreur remplissage PDF : {e}")
-        return None
+        log.warning(f"⚠️ Impossible de remplir les champs ({e}). Copie du fichier vierge.")
+        # Sécurité anti-crash : si la matrice est vraiment plate, on fait une simple copie
+        import shutil
+        shutil.copy(chemin_modele, chemin_rempli)
+        return chemin_rempli
 
 # ============================================================
 # OUVRIR LES FICHIERS
